@@ -17,7 +17,9 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
+import android.provider.Settings
 import android.util.DisplayMetrics
+import android.view.Gravity
 import android.view.WindowManager
 import java.io.File
 import java.io.FileOutputStream
@@ -27,6 +29,8 @@ class ScreenCaptureService : Service() {
     private var reader: ImageReader? = null
     private var display: VirtualDisplay? = null
     private var thread: HandlerThread? = null
+    private var aimOverlay: AimOverlayView? = null
+    private var windowManager: WindowManager? = null
     private var lastSavedAt = 0L
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -45,6 +49,7 @@ class ScreenCaptureService : Service() {
             val width = metrics.widthPixels
             val height = metrics.heightPixels
             val density = metrics.densityDpi
+            if (Settings.canDrawOverlays(this)) attachAimOverlay()
             thread = HandlerThread("CarromScreenCapture").also { it.start() }
             val handler = Handler(thread!!.looper)
             reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 3)
@@ -60,7 +65,6 @@ class ScreenCaptureService : Service() {
                 val image = source.acquireLatestImage() ?: return@setOnImageAvailableListener
                 try {
                     val now = System.currentTimeMillis()
-                    // Keep the stream active, but save at most one preview frame per second.
                     if (now - lastSavedAt >= 900L) {
                         val plane = image.planes[0]
                         val pixelStride = plane.pixelStride
@@ -70,6 +74,11 @@ class ScreenCaptureService : Service() {
                         full.copyPixelsFromBuffer(plane.buffer)
                         val bitmap = Bitmap.createBitmap(full, 0, 0, width, height)
                         full.recycle()
+
+                        // On-device experimental circle detection and manual shot geometry.
+                        try { aimOverlay?.update(CarromVision.analyze(bitmap)) }
+                        catch (_: Exception) { aimOverlay?.update(null) }
+
                         val file = File(cacheDir, "latest-disc-pool-screen.jpg")
                         FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 82, it) }
                         bitmap.recycle()
@@ -89,6 +98,34 @@ class ScreenCaptureService : Service() {
         return START_NOT_STICKY
     }
 
+    private fun attachAimOverlay() {
+        try {
+            windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+            val type = if (Build.VERSION.SDK_INT >= 26) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                       else WindowManager.LayoutParams.TYPE_PHONE
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                type,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT
+            ).apply { gravity = Gravity.TOP or Gravity.START }
+            aimOverlay = AimOverlayView(this)
+            windowManager?.addView(aimOverlay, params)
+        } catch (_: Exception) {
+            aimOverlay = null
+        }
+    }
+
+    private fun removeAimOverlay() {
+        try { aimOverlay?.let { windowManager?.removeView(it) } } catch (_: Exception) {}
+        aimOverlay = null
+        windowManager = null
+    }
+
     private fun notification(): Notification {
         val channelId = "carrom_capture"
         if (Build.VERSION.SDK_INT >= 26) {
@@ -96,8 +133,10 @@ class ScreenCaptureService : Service() {
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
         val builder = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, channelId) else Notification.Builder(this)
+        val overlayText = if (Settings.canDrawOverlays(this)) "Live capture and experimental aim overlay active."
+                           else "Screen capture active. Enable Display over other apps for aim overlay."
         return builder.setContentTitle("Carrom Aim Pro • Screen analysis")
-            .setContentText("Screen sharing is active. Switch to Disc Pool; stop sharing from Android when finished.")
+            .setContentText(overlayText)
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setOngoing(true).build()
     }
@@ -108,6 +147,7 @@ class ScreenCaptureService : Service() {
         try { projection?.stop() } catch (_: Exception) {}
         projection = null
         reader?.close(); reader = null
+        removeAimOverlay()
         thread?.quitSafely(); thread = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -117,6 +157,7 @@ class ScreenCaptureService : Service() {
         try { display?.release() } catch (_: Exception) {}
         display = null
         reader?.close(); reader = null
+        removeAimOverlay()
         thread?.quitSafely(); thread = null
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
