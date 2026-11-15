@@ -31,7 +31,7 @@ class MainActivity : Activity() {
             if (bitmap != null) {
                 preview.setImageBitmap(bitmap)
                 preview.visibility = View.VISIBLE
-                status.text = "Captured game screen. Use the board below to plan a shot."
+                status.text = "Live screen feed active • latest frame updated. Coin detection is the next development step."
             } else {
                 status.text = "Capture saved, but preview could not be opened."
             }
@@ -56,13 +56,13 @@ class MainActivity : Activity() {
             setPadding(4, 8, 4, 8)
         }
         val help = TextView(this).apply {
-            text = "Open Disc Pool, return here and tap Capture. Android will ask permission before each capture."
+            text = "Tap Capture and approve screen sharing. Then switch to Carrom Disc Pool; this app will keep updating the latest screen frame until you stop sharing in Android."
             textSize = 13f
             setTextColor(Color.LTGRAY)
             setPadding(4, 0, 4, 6)
         }
         status = TextView(this).apply {
-            text = "Ready • Capture one game frame to inspect the board"
+            text = "Ready • Start screen sharing, then switch to Disc Pool"
             textSize = 13f
             setTextColor(Color.rgb(120, 220, 170))
             setPadding(4, 6, 4, 6)
@@ -110,7 +110,7 @@ class MainActivity : Activity() {
             setOnClickListener { board.toggleBank() }
         }, LinearLayout.LayoutParams(0, -2, 1f))
         val note = TextView(this).apply {
-            text = "Live capture is a visual reference; shot coordinates are still set manually. No automatic aiming, tapping or game modification."
+            text = "Continuous screen preview only at this stage. Automatic coin/pocket detection and aiming guidance are not implemented yet."
             textSize = 11f
             setTextColor(Color.LTGRAY)
             setPadding(4, 8, 4, 4)
@@ -137,7 +137,7 @@ class MainActivity : Activity() {
                 putExtra(ScreenCaptureService.EXTRA_DATA, data)
             }
             if (Build.VERSION.SDK_INT >= 26) startForegroundService(service) else startService(service)
-            status.text = "Capturing… keep the permission prompt-approved screen available briefly."
+            status.text = "Screen sharing started • switch to Carrom Disc Pool now. Keep sharing active while playing."
         } else if (requestCode == captureRequest) {
             status.text = "Screen capture cancelled. Tap Capture to try again."
         }
