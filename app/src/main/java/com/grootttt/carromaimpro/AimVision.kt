@@ -72,7 +72,7 @@ object CarromVision {
                 if (aspect in .78f..1.22f && area > bitmap.width * bitmap.height * .16 &&
                     rect.x > bitmap.width * .005 && rect.x + rect.width < bitmap.width * .995 &&
                     area > largestArea) {
-                    largestArea = area
+                    largestArea = area.toDouble()
                     boardX = rect.x.toFloat()
                     boardY = rect.y.toFloat()
                     boardW = w
