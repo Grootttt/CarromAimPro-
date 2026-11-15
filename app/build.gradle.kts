@@ -22,7 +22,8 @@ android {
         versionCode = 1
         versionName = "1.0"
     }
-    dependencies {
-        implementation("org.opencv:opencv:4.10.0")
-    }
+}
+
+dependencies {
+    implementation("org.opencv:opencv:4.10.0")
 }
