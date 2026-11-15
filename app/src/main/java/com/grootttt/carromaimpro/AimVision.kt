@@ -99,7 +99,7 @@ object CarromVision {
                 val boardMin = min(right - left, bottom - top).toDouble()
                 Imgproc.HoughCircles(
                     gray, circles, Imgproc.HOUGH_GRADIENT, 1.15,
-                    max(12.0, boardMin * .038), 90.0, 18.0,
+                    max(8.0, boardMin * .020), 90.0, 14.0,
                     max(6, (boardMin / 105.0).toInt()),
                     max(12, (boardMin / 25.0).toInt())
                 )
@@ -120,7 +120,7 @@ object CarromVision {
                 val y = top + v[1].toFloat()
                 val radius = v[2].toFloat()
                 if (x !in minX..maxX || y !in minY..maxY) continue
-                if (candidates.none { hypot(it.point.x - x, it.point.y - y) < radius * .85f }) {
+                if (candidates.none { hypot(it.point.x - x, it.point.y - y) < min(it.radius, radius) * .42f }) {
                     candidates.add(DetectedDisc(AimPoint(x, y), radius))
                 }
             }
@@ -155,10 +155,19 @@ object CarromVision {
                 )
                 if (contact.x !in minX..maxX || contact.y !in minY..maxY) continue
                 val shotLength = hypot(contact.x - striker.x, contact.y - striker.y)
-                val blocked = coins.any { other ->
-                    other !== disc && distanceToSegment(other.point, striker, contact) < radius * 1.7f
+                // Penalise blockers on BOTH the striker-to-contact and coin-to-pocket paths.
+                // A coin close to another is not automatically discarded: this keeps
+                // partially overlapping discs eligible for separate candidate circles.
+                val blockedApproach = coins.any { other ->
+                    other !== disc && distanceToSegment(other.point, striker, contact) < radius * 1.65f
                 }
-                val score = shotLength + length * .35f + if (blocked) boardW * .9f else 0f
+                val blockedPot = coins.any { other ->
+                    other !== disc && distanceToSegment(other.point, coin, pocket) < radius * 1.55f
+                }
+                val blocked = blockedApproach || blockedPot
+                val score = shotLength + length * .35f +
+                    (if (blockedApproach) boardW * .65f else 0f) +
+                    (if (blockedPot) boardW * .85f else 0f)
                 suggestions.add(ShotSuggestion(coin, pocket, contact, score))
             }
             val ranked = suggestions.sortedBy { it.score }.take(3)
@@ -226,8 +235,8 @@ class AimOverlayView(context: Context) : View(context) {
         canvas.drawLine(shot.coin.x, shot.coin.y, shot.pocket.x, shot.pocket.y, coinPaint)
         canvas.drawCircle(shot.coin.x, shot.coin.y, 24f, coinPaint)
         canvas.drawCircle(shot.pocket.x, shot.pocket.y, 20f, mainLine)
-        canvas.drawText("Coins: ${shot.detectedCoins} • Best pot + 2 alternatives", 24f, 72f, label)
-        canvas.drawText("Green: recommended • Blue: alternatives", 24f, 112f, label)
-        canvas.drawText("Experimental guidance — verify the shot", 24f, 152f, label)
+        canvas.drawText("Detected discs: ${shot.detectedCoins} • BEST POT SHOT", 24f, 72f, label)
+        canvas.drawText("Green: striker → target → pocket", 24f, 112f, label)
+        canvas.drawText("Blue: alternative shots • verify before shooting", 24f, 152f, label)
     }
 }
