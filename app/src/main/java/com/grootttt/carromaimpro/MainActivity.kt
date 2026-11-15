@@ -8,6 +8,8 @@ import android.content.IntentFilter
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
+import android.net.Uri
+import android.provider.Settings
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -67,6 +69,17 @@ class MainActivity : Activity() {
             setTextColor(Color.rgb(120, 220, 170))
             setPadding(4, 6, 4, 6)
         }
+        val overlayPermission = Button(this).apply {
+            text = "ENABLE FLOATING AIM OVERLAY"
+            setOnClickListener {
+                if (!Settings.canDrawOverlays(this@MainActivity)) {
+                    val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + packageName))
+                    startActivity(intent)
+                } else {
+                    status.text = "Floating overlay permission is enabled. Start screen capture and switch to Disc Pool."
+                }
+            }
+        }
         val capture = Button(this).apply {
             text = "CAPTURE GAME SCREEN"
             setOnClickListener {
@@ -110,13 +123,14 @@ class MainActivity : Activity() {
             setOnClickListener { board.toggleBank() }
         }, LinearLayout.LayoutParams(0, -2, 1f))
         val note = TextView(this).apply {
-            text = "Continuous screen preview only at this stage. Automatic coin/pocket detection and aiming guidance are not implemented yet."
+            text = "Experimental OpenCV circle detection and floating shot lines are enabled. Board and pocket positions are estimated; verify every suggested shot. Accuracy needs testing on your actual game screen."
             textSize = 11f
             setTextColor(Color.LTGRAY)
             setPadding(4, 8, 4, 4)
         }
         root.addView(heading)
         root.addView(help)
+        root.addView(overlayPermission)
         root.addView(capture)
         root.addView(status)
         root.addView(preview, LinearLayout.LayoutParams(-1, -2))
