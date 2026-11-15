@@ -27,6 +27,7 @@ class ScreenCaptureService : Service() {
     private var reader: ImageReader? = null
     private var display: VirtualDisplay? = null
     private var thread: HandlerThread? = null
+    private var lastSavedAt = 0L
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIFICATION_ID, notification())
@@ -46,7 +47,7 @@ class ScreenCaptureService : Service() {
             val density = metrics.densityDpi
             thread = HandlerThread("CarromScreenCapture").also { it.start() }
             val handler = Handler(thread!!.looper)
-            reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+            reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 3)
             projection?.registerCallback(object : MediaProjection.Callback() {
                 override fun onStop() { cleanup() }
             }, handler)
@@ -58,21 +59,28 @@ class ScreenCaptureService : Service() {
             reader?.setOnImageAvailableListener({ source ->
                 val image = source.acquireLatestImage() ?: return@setOnImageAvailableListener
                 try {
-                    val plane = image.planes[0]
-                    val pixelStride = plane.pixelStride
-                    val rowPadding = plane.rowStride - pixelStride * width
-                    val paddedWidth = width + rowPadding / pixelStride
-                    val full = Bitmap.createBitmap(paddedWidth, height, Bitmap.Config.ARGB_8888)
-                    full.copyPixelsFromBuffer(plane.buffer)
-                    val bitmap = Bitmap.createBitmap(full, 0, 0, width, height)
-                    full.recycle()
-                    val file = File(cacheDir, "latest-disc-pool-screen.jpg")
-                    FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 88, it) }
-                    bitmap.recycle()
-                    sendBroadcast(Intent(ACTION_CAPTURED).setPackage(packageName).putExtra(EXTRA_PATH, file.absolutePath))
+                    val now = System.currentTimeMillis()
+                    // Keep the stream active, but save at most one preview frame per second.
+                    if (now - lastSavedAt >= 900L) {
+                        val plane = image.planes[0]
+                        val pixelStride = plane.pixelStride
+                        val rowPadding = plane.rowStride - pixelStride * width
+                        val paddedWidth = width + rowPadding / pixelStride
+                        val full = Bitmap.createBitmap(paddedWidth, height, Bitmap.Config.ARGB_8888)
+                        full.copyPixelsFromBuffer(plane.buffer)
+                        val bitmap = Bitmap.createBitmap(full, 0, 0, width, height)
+                        full.recycle()
+                        val file = File(cacheDir, "latest-disc-pool-screen.jpg")
+                        FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.JPEG, 82, it) }
+                        bitmap.recycle()
+                        lastSavedAt = now
+                        sendBroadcast(Intent(ACTION_CAPTURED).setPackage(packageName).putExtra(EXTRA_PATH, file.absolutePath))
+                    }
                 } catch (_: Exception) {
                     sendBroadcast(Intent(ACTION_FAILED).setPackage(packageName))
-                } finally { image.close(); stopCapture() }
+                } finally {
+                    image.close()
+                }
             }, handler)
         } catch (_: Exception) {
             sendBroadcast(Intent(ACTION_FAILED).setPackage(packageName))
@@ -88,8 +96,8 @@ class ScreenCaptureService : Service() {
             getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
         }
         val builder = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, channelId) else Notification.Builder(this)
-        return builder.setContentTitle("Carrom Aim Pro")
-            .setContentText("Capturing one screen frame with your permission")
+        return builder.setContentTitle("Carrom Aim Pro • Screen analysis")
+            .setContentText("Screen sharing is active. Switch to Disc Pool; stop sharing from Android when finished.")
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .setOngoing(true).build()
     }
@@ -104,6 +112,7 @@ class ScreenCaptureService : Service() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
+
     private fun cleanup() {
         try { display?.release() } catch (_: Exception) {}
         display = null
@@ -112,6 +121,7 @@ class ScreenCaptureService : Service() {
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
+
     override fun onDestroy() { cleanup(); super.onDestroy() }
     override fun onBind(intent: Intent?): IBinder? = null
 
